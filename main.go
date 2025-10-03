@@ -1,11 +1,5 @@
 package main
 
-import (
-	"fmt"
-
-	"rsc.io/quote"
-)
-
 func main() {
-	fmt.Println(quote.Go())
+	SaveData1("./test.txt", []byte("Hello!"))
 }
