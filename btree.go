@@ -184,6 +184,59 @@ func nodeSplit3(old BNode) (uint16, [3]BNode) {
 	return 3, [3]BNode{leftleft, middle, right}
 }
 
+// Full B+tree insertion.
+// Starts with key lookups in the root node until it reaches a leaf.
+// insert a KV into a node, the result might be split.
+// the caller is responsible for deallocating the input node.
+// and splitting and allocating result nodes.
+func treeInsert(tree *BTree, node BNode, key []byte, val []byte) BNode {
+	// the result node.
+	// it's allowed to be bigger than 1 page and will be split if so
+	new := BNode{data: make([]byte, 2*BTREE_PAGE_SIZE)}
+
+	// where to insert the key?
+	idx := nodeLookupLE(node, key)
+	// act depending on the node type
+	switch node.btype() {
+	case BNODE_LEAF:
+		// leaf, node.getKey(idx) <= key
+		if bytes.Equal(key, node.getKey(idx)) {
+			// found the key, update it
+			leafUpdate(new, node, idx, key, val)
+		} else {
+			// insert it after the position
+			leafInsert(new, node, idx+1, key, val)
+		}
+	case BNODE_NODE:
+		// internal node, insert it to a kid node.
+		nodeInsert(tree, new, node, idx, key, val)
+	default:
+		panic("bad node!")
+	}
+
+	return new
+}
+
+// Internal nodes are handled recursively,
+// each call returns an updated node,
+// and the caller will split it if it’s oversized
+// and handle the allocation/deallocation.
+func nodeInsert(tree *BTree, new, node BNode, idx uint16, key []byte, val []byte) {
+	kptr := node.getPointer(idx)
+	// recursive insertion to the kid node
+	knode := treeInsert(tree, tree.get(kptr), key, val)
+	// split the result
+	nsplit, split := nodeSplit3(knode)
+	// deallocate the kid node
+	tree.del(kptr)
+	// update the kid links
+	nodeReplaceKidN(tree, new, node, idx, split[:nsplit]...)
+}
+
+func leafUpdate(new, node BNode, idx uint16, key []byte, val []byte) {
+	panic("unimplemented")
+}
+
 func initialize() {
 	node1max := HEADER + 8 + 2 + 4 + BTREE_MAX_KEY_SIZE + BTREE_MAX_VAL_SIZE
 	assert(node1max <= BTREE_PAGE_SIZE)
